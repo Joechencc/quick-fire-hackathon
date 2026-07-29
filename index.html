@@ -764,6 +764,7 @@
     const lvl = LEVELS[state.levelIdx];
     state.instances = generateScene(lvl.count);
     state.selected = new Set();
+    labelDock.querySelectorAll('.label-btn.selected').forEach(b=>b.classList.remove('selected'));
     doneBtn.classList.remove('show');
     doneBtn.style.display = 'none';
     doneBtn.disabled = false;
