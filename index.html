@@ -759,10 +759,13 @@
 
   let flashRAF = null;
   function startRound(){
+    revealTimers.forEach(id=>clearTimeout(id));
+    revealTimers = [];
     const lvl = LEVELS[state.levelIdx];
     state.instances = generateScene(lvl.count);
     state.selected = new Set();
     doneBtn.classList.remove('show');
+    doneBtn.style.display = 'none';
     doneBtn.disabled = false;
     doneBtn.style.pointerEvents = 'auto';
     updateSelectedCounter();
