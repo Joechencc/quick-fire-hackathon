@@ -133,6 +133,7 @@
     background:linear-gradient(0deg, rgba(20,10,40,.75), rgba(20,10,40,0));
   }
   .label-btn{
+    position:relative;
     display:flex; flex-direction:column; align-items:center; justify-content:center;
     width:clamp(58px,10vw,84px); height:clamp(58px,10vw,84px);
     border-radius:18px; border:3px solid rgba(255,255,255,.5);
@@ -142,11 +143,24 @@
   }
   .label-btn .txt{ font-size:.55rem; font-weight:800; color:#fff; margin-top:2px; text-shadow:0 1px 2px rgba(0,0,0,.5); }
   .label-btn:active{ transform:translateY(4px); box-shadow:0 1px 0 rgba(0,0,0,.35); }
+  .label-btn .badge{
+    position:absolute; top:-9px; right:-9px; width:26px; height:26px; border-radius:50%;
+    background:#2ECC71; border:3px solid #fff; color:#fff; font-size:13px; font-weight:900;
+    display:flex; align-items:center; justify-content:center;
+    opacity:0; transform:scale(0.3); transition:opacity .12s, transform .12s;
+    box-shadow:0 2px 4px rgba(0,0,0,.35);
+  }
   .label-btn.selected{
-    transform:translateY(3px) scale(1.05);
-    box-shadow:0 2px 0 rgba(0,0,0,.35);
-    border-color:#fff;
-    filter:brightness(1.25) saturate(1.3);
+    transform:translateY(3px) scale(1.06);
+    box-shadow:0 2px 0 rgba(0,0,0,.35), inset 0 0 0 999px rgba(10,5,20,.4);
+    border-color:#fff; border-width:4px;
+    filter:saturate(1.4);
+  }
+  .label-btn.selected .badge{ opacity:1; transform:scale(1); }
+  #selected-counter{
+    position:absolute; bottom:calc(150px + env(safe-area-inset-bottom));
+    left:50%; transform:translateX(-50%); z-index:61;
+    background:rgba(0,0,0,.45); color:var(--yellow);
   }
   #done-btn{
     display:none; position:absolute; bottom:calc(96px + env(safe-area-inset-bottom));
@@ -159,7 +173,7 @@
     position:absolute; left:0; right:0; bottom:0; z-index:65;
     display:flex; flex-direction:column; align-items:center;
     padding:12px 16px calc(12px + env(safe-area-inset-bottom));
-    background:linear-gradient(0deg, rgba(20,10,40,.92), rgba(20,10,40,.05));
+    background:linear-gradient(0deg, rgba(20,10,40,.68), rgba(20,10,40,.02));
   }
   #reveal-title{
     font-weight:900; color:var(--yellow); font-size:clamp(1.1rem,3vw,1.6rem);
@@ -210,6 +224,7 @@
   </div>
 
   <div id="label-dock" class="hidden"></div>
+  <div class="hud-pill hidden" id="selected-counter">0 selected</div>
   <button class="btn" id="done-btn">DONE ✔</button>
 
   <div id="reveal-panel" class="hidden">
@@ -301,6 +316,7 @@
     });
     sctx.setTransform(DPR,0,0,DPR,0,0);
     fctx.setTransform(DPR,0,0,DPR,0,0);
+    generateSkyline();
     drawBackground(sctx);
   }
   window.addEventListener('resize', resize);
@@ -322,6 +338,9 @@
   }
   const SFX = {
     tap(){ tone(520,0,0.08,'square',0.12); },
+    select(){ tone(900,0,0.07,'square',0.15); tone(1300,0.05,0.06,'square',0.08); },
+    deselect(){ tone(320,0,0.09,'triangle',0.11); },
+    boxTick(){ tone(1500,0,0.045,'square',0.08); },
     correct(){ tone(660,0,0.09,'triangle',0.16); tone(880,0.05,0.12,'triangle',0.14); },
     wrong(){ tone(180,0,0.16,'sawtooth',0.12); },
     flash(){ tone(1200,0,0.05,'square',0.08); },
@@ -348,44 +367,110 @@
     ctx.closePath();
   }
 
+  function bands(){
+    const safeTop = Math.max(H*0.16, 78);
+    const dockReserve = Math.max(H*0.34, 150);
+    const safeBottom = H - dockReserve;
+    const safeH = Math.max(40, safeBottom - safeTop);
+    const skylineY1 = safeTop + safeH*0.24;
+    const sidewalkY1 = skylineY1 + safeH*0.19;
+    return { safeTop, safeBottom, safeH, skylineY0:safeTop, skylineY1, sidewalkY1, roadY0:sidewalkY1 };
+  }
+
+  let skyline = [];
+  function generateSkyline(){
+    skyline = [];
+    const b = bands();
+    let x = 0;
+    while(x < W){
+      if(Math.random() < 0.4){
+        const r = rand(W*0.018, W*0.032);
+        skyline.push({ type:'tree', x:x+r, r });
+        x += r*2 + rand(6,18);
+      } else {
+        const w = rand(W*0.07, W*0.13);
+        const h = rand(0.5,1) * (b.skylineY1 - b.skylineY0);
+        skyline.push({ type:'building', x, w, h, color: pick(['#8b7bc4','#7768ad','#9c8cd6']) });
+        x += w + rand(3,12);
+      }
+    }
+  }
+
   function drawBackground(ctx){
     ctx.clearRect(0,0,W,H);
-    const skyGrad = ctx.createLinearGradient(0,0,0,H*0.6);
+    const b = bands();
+    // sky
+    const skyGrad = ctx.createLinearGradient(0,0,0,b.skylineY1);
     skyGrad.addColorStop(0,'#8ec9ff'); skyGrad.addColorStop(1,'#cdeaff');
-    ctx.fillStyle = skyGrad; ctx.fillRect(0,0,W,H*0.62);
+    ctx.fillStyle = skyGrad; ctx.fillRect(0,0,W,b.skylineY1);
     // sun
     ctx.fillStyle = '#FFE66D';
-    ctx.beginPath(); ctx.arc(W*0.87, H*0.16, Math.min(W,H)*0.07, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(W*0.87, b.skylineY0*0.55, Math.min(W,H)*0.055, 0, Math.PI*2); ctx.fill();
     // clouds
     ctx.fillStyle = 'rgba(255,255,255,.9)';
-    [[0.15,0.15,1],[0.35,0.1,0.7],[0.6,0.2,0.5]].forEach(([cx,cy,s])=>{
-      const r = Math.min(W,H)*0.045*s;
+    [[0.15,0.35,1],[0.4,0.55,0.7],[0.62,0.3,0.5]].forEach(([cx,cyF,s])=>{
+      const r = Math.min(W,H)*0.04*s;
+      const cy = b.skylineY0*cyF + 8;
       ctx.beginPath();
-      ctx.arc(W*cx, H*cy, r,0,Math.PI*2);
-      ctx.arc(W*cx+r*0.9, H*cy+r*0.15, r*0.75,0,Math.PI*2);
-      ctx.arc(W*cx-r*0.9, H*cy+r*0.15, r*0.75,0,Math.PI*2);
+      ctx.arc(W*cx, cy, r,0,Math.PI*2);
+      ctx.arc(W*cx+r*0.9, cy+r*0.15, r*0.75,0,Math.PI*2);
+      ctx.arc(W*cx-r*0.9, cy+r*0.15, r*0.75,0,Math.PI*2);
       ctx.fill();
+    });
+    // skyline silhouette (buildings + trees) sitting on the sidewalk line
+    skyline.forEach(item=>{
+      if(item.type==='building'){
+        ctx.fillStyle = item.color;
+        roundRect(ctx, item.x, b.skylineY1-item.h, item.w, item.h, 4); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,.35)';
+        for(let wy=b.skylineY1-item.h+7; wy<b.skylineY1-7; wy+=item.w*0.34){
+          for(let wx=item.x+4; wx<item.x+item.w-4; wx+=item.w*0.34){
+            ctx.fillRect(wx,wy,item.w*0.15,item.w*0.15);
+          }
+        }
+      } else {
+        ctx.fillStyle = '#6b4a3a';
+        ctx.fillRect(item.x-item.r*0.1, b.skylineY1-item.r*0.55, item.r*0.2, item.r*0.55);
+        ctx.fillStyle = '#3f9e5c';
+        ctx.beginPath(); ctx.arc(item.x, b.skylineY1-item.r*0.7, item.r,0,Math.PI*2); ctx.fill();
+      }
     });
     // sidewalk
     ctx.fillStyle = '#e7ddc8';
-    ctx.fillRect(0, H*0.60, W, H*0.14);
-    // road
+    ctx.fillRect(0, b.skylineY1, W, b.sidewalkY1-b.skylineY1);
+    // road (extends to bottom of canvas for continuity beneath the UI dock)
     ctx.fillStyle = '#5a5a6e';
-    ctx.fillRect(0, H*0.74, W, H*0.26);
-    // road dashed line
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(4,H*0.012); ctx.setLineDash([Math.max(18,W*0.03), Math.max(14,W*0.02)]);
-    ctx.beginPath(); ctx.moveTo(0,H*0.87); ctx.lineTo(W,H*0.87); ctx.stroke();
+    ctx.fillRect(0, b.roadY0, W, H-b.roadY0);
+    // crosswalk stripes
+    const cwW = Math.min(W*0.16, 90), cwX = W*0.5 - cwW/2;
+    const roadH = b.safeBottom - b.roadY0;
+    const stripeH = roadH/6;
+    ctx.fillStyle = 'rgba(255,255,255,.85)';
+    for(let i=0;i<6;i+=2){ ctx.fillRect(cwX, b.roadY0+i*stripeH, cwW, stripeH*0.8); }
+    // road dashed centerline
+    const centerY = b.roadY0 + roadH*0.5;
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(4,H*0.012);
+    ctx.setLineDash([Math.max(18,W*0.03), Math.max(14,W*0.02)]);
+    ctx.beginPath(); ctx.moveTo(0,centerY); ctx.lineTo(W,centerY); ctx.stroke();
     ctx.setLineDash([]);
   }
 
   function zoneY(zone){
-    if(zone==='sidewalk') return H*0.60 + H*0.07;
-    if(zone==='side') return H*0.60;
-    if(zone==='crossing') return H*0.87;
-    return H*0.74 + H*0.13; // road
+    const b = bands();
+    if(zone==='sidewalk') return b.skylineY1 + (b.sidewalkY1-b.skylineY1)*0.6;
+    if(zone==='side') return b.skylineY1 + (b.sidewalkY1-b.skylineY1)*0.2;
+    if(zone==='crossing') return b.roadY0 + (b.safeBottom-b.roadY0)*0.55;
+    return b.roadY0 + (b.safeBottom-b.roadY0)*0.65; // road
   }
 
-  function drawObjectShape(ctx, type, cx, cy, s){
+  function drawObjectShape(ctx, type, cx, cy, s, t, phase){
+    t = t||0; phase = phase||0;
+    // soft drop shadow, shared by every type for a consistent grounded look
+    ctx.save();
+    ctx.fillStyle = 'rgba(20,15,35,.22)';
+    ctx.beginPath(); ctx.ellipse(cx, cy+s*0.62, s*0.46, s*0.14, 0, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+
     ctx.save();
     ctx.translate(cx,cy);
     ctx.lineWidth = Math.max(2.5, s*0.06);
@@ -393,13 +478,16 @@
     ctx.fillStyle = type.color;
     switch(type.id){
       case 'pedestrian': {
+        const swing = 0.5*Math.sin(t*6+phase);
         roundRect(ctx,-s*0.28,-s*0.55,s*0.56,s*0.75,s*0.22); ctx.fill(); ctx.stroke();
         ctx.beginPath(); ctx.arc(0,-s*0.72,s*0.26,0,Math.PI*2); ctx.fillStyle='#ffe0c2'; ctx.fill(); ctx.stroke();
         ctx.fillStyle='#231942';
         ctx.beginPath(); ctx.arc(-s*0.09,-s*0.75,s*0.035,0,Math.PI*2); ctx.arc(s*0.09,-s*0.75,s*0.035,0,Math.PI*2); ctx.fill();
         ctx.fillStyle=type.color;
-        roundRect(ctx,-s*0.22,s*0.2,s*0.18,s*0.35,s*0.08); ctx.fill(); ctx.stroke();
-        roundRect(ctx,s*0.04,s*0.2,s*0.18,s*0.35,s*0.08); ctx.fill(); ctx.stroke();
+        ctx.save(); ctx.translate(-s*0.13,s*0.2); ctx.rotate(swing*0.5);
+        roundRect(ctx,-s*0.09,0,s*0.18,s*0.35,s*0.08); ctx.fill(); ctx.stroke(); ctx.restore();
+        ctx.save(); ctx.translate(s*0.13,s*0.2); ctx.rotate(-swing*0.5);
+        roundRect(ctx,-s*0.09,0,s*0.18,s*0.35,s*0.08); ctx.fill(); ctx.stroke(); ctx.restore();
         break;
       }
       case 'cyclist': {
@@ -445,9 +533,11 @@
         break;
       }
       case 'dog': {
+        const wag = 0.4 + 0.35*Math.sin(t*7+phase);
         roundRect(ctx,-s*0.4,-s*0.15,s*0.8,s*0.4,s*0.2); ctx.fill(); ctx.stroke();
         ctx.beginPath(); ctx.arc(s*0.38,-s*0.25,s*0.24,0,Math.PI*2); ctx.fill(); ctx.stroke();
-        ctx.beginPath(); ctx.ellipse(s*0.52,-s*0.42,s*0.08,s*0.16,0.4,0,Math.PI*2); ctx.fill(); ctx.stroke();
+        ctx.save(); ctx.translate(s*0.44,-s*0.28); ctx.rotate(wag);
+        ctx.beginPath(); ctx.ellipse(0,-s*0.14,s*0.08,s*0.16,0,0,Math.PI*2); ctx.fill(); ctx.stroke(); ctx.restore();
         ctx.fillStyle='#231942'; ctx.beginPath(); ctx.arc(s*0.45,-s*0.28,s*0.03,0,Math.PI*2); ctx.fill();
         ctx.fillStyle=type.color;
         [-s*0.25,0,s*0.2].forEach(dx=>{ roundRect(ctx,dx-s*0.05,s*0.2,s*0.1,s*0.16,s*0.04); ctx.fill(); ctx.stroke(); });
@@ -462,6 +552,7 @@
         break;
       }
       case 'duck': {
+        ctx.rotate(0.09*Math.sin(t*4.5+phase));
         ctx.beginPath(); ctx.ellipse(0,0,s*0.42,s*0.32,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
         ctx.beginPath(); ctx.arc(s*0.3,-s*0.28,s*0.22,0,Math.PI*2); ctx.fill(); ctx.stroke();
         ctx.fillStyle='#FF9F43'; ctx.beginPath(); ctx.moveTo(s*0.48,-s*0.28); ctx.lineTo(s*0.68,-s*0.22); ctx.lineTo(s*0.48,-s*0.16); ctx.closePath(); ctx.fill(); ctx.stroke();
@@ -493,6 +584,7 @@
   const continueBtn = document.getElementById('continue-btn');
   const readyBanner = document.getElementById('ready-banner');
   const stopwatch = document.getElementById('stopwatch');
+  const selectedCounter = document.getElementById('selected-counter');
   const titleScreen = document.getElementById('title-screen');
   const resultsScreen = document.getElementById('results-screen');
   const lifeFlash = document.getElementById('life-flash');
@@ -511,50 +603,67 @@
   function rand(min,max){ return min + Math.random()*(max-min); }
   function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
 
+  function updateSelectedCounter(){
+    const n = state.selected.size;
+    selectedCounter.textContent = n + (n===1 ? ' selected' : ' selected');
+    selectedCounter.classList.toggle('hidden', n===0);
+  }
+
   function generateScene(count){
     const instances = [];
     const usedX = [];
+    const b = bands();
     for(let i=0;i<count;i++){
       const type = pick(OBJECT_TYPES);
       let x, tries=0;
-      do { x = rand(W*0.08, W*0.92); tries++; } while(usedX.some(ux=>Math.abs(ux-x) < W*0.07) && tries < 12);
+      do { x = rand(W*0.07, W*0.93); tries++; } while(usedX.some(ux=>Math.abs(ux-x) < W*0.1) && tries < 14);
       usedX.push(x);
-      const y = zoneY(type.zone) + rand(-H*0.02,H*0.02);
-      const s = rand(Math.min(W,H)*0.09, Math.min(W,H)*0.13);
-      instances.push({ type, x, y, s });
+      const y = zoneY(type.zone) + rand(-b.safeH*0.03, b.safeH*0.03);
+      const s = rand(b.safeH*0.20, b.safeH*0.30);
+      instances.push({ type, x, y, s, phase: rand(0, Math.PI*2) });
     }
     return instances;
   }
 
-  function drawScene(instances){
+  function drawScene(instances, t){
     drawBackground(sctx);
-    instances.forEach(o=> drawObjectShape(sctx, o.type, o.x, o.y, o.s));
+    instances.forEach(o=> drawObjectShape(sctx, o.type, o.x, o.y, o.s, t, o.phase));
   }
 
   function clearScene(){
     drawBackground(sctx);
   }
 
-  function drawReveal(instances, tapped){
+  function drawBoxForInstance(ctx, o, correct){
+    ctx.save();
+    ctx.strokeStyle = correct ? '#2ECC71' : '#FF5A5F';
+    ctx.lineWidth = 4;
+    if(!correct) ctx.setLineDash([8,6]);
+    roundRect(ctx, o.x-o.s*0.85, o.y-o.s*0.95, o.s*1.7, o.s*1.7, 10);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.font = '900 ' + Math.max(11,o.s*0.24) + 'px Trebuchet MS, sans-serif';
+    ctx.textAlign='center';
+    ctx.fillStyle = correct ? '#1c9c4e' : '#c0242c';
+    ctx.strokeStyle = '#fff'; ctx.lineWidth=3;
+    ctx.strokeText(o.type.label, o.x, o.y-o.s*1.05);
+    ctx.fillText(o.type.label, o.x, o.y-o.s*1.05);
+    ctx.restore();
+  }
+
+  let revealTimers = [];
+  function animateReveal(instances, tapped){
+    revealTimers.forEach(id=>clearTimeout(id));
+    revealTimers = [];
+    const t = performance.now()/1000;
     drawBackground(sctx);
-    instances.forEach(o=>{
-      drawObjectShape(sctx, o.type, o.x, o.y, o.s);
-      const correct = tapped.has(o.type.id);
-      sctx.save();
-      sctx.strokeStyle = correct ? '#2ECC71' : '#FF5A5F';
-      sctx.lineWidth = 4;
-      if(!correct) sctx.setLineDash([8,6]);
-      roundRect(sctx, o.x-o.s*0.85, o.y-o.s*0.95, o.s*1.7, o.s*1.7, 10);
-      sctx.stroke();
-      sctx.setLineDash([]);
-      sctx.font = '900 ' + Math.max(11,o.s*0.24) + 'px Trebuchet MS, sans-serif';
-      sctx.textAlign='center';
-      sctx.fillStyle = correct ? '#1c9c4e' : '#c0242c';
-      sctx.strokeStyle = '#fff'; sctx.lineWidth=3;
-      const label = o.type.label;
-      sctx.strokeText(label, o.x, o.y-o.s*1.05);
-      sctx.fillText(label, o.x, o.y-o.s*1.05);
-      sctx.restore();
+    instances.forEach(o=> drawObjectShape(sctx, o.type, o.x, o.y, o.s, t, o.phase));
+    instances.forEach((o,i)=>{
+      const id = setTimeout(()=>{
+        drawBoxForInstance(sctx, o, tapped.has(o.type.id));
+        SFX.boxTick();
+      }, i*80);
+      revealTimers.push(id);
     });
   }
 
@@ -613,12 +722,16 @@
       b.className = 'label-btn';
       b.style.background = type.color;
       b.dataset.id = type.id;
-      b.innerHTML = `<div>${type.emoji}</div><div class="txt">${type.label}</div>`;
+      b.innerHTML = `<div>${type.emoji}</div><div class="txt">${type.label}</div><div class="badge">✓</div>`;
       b.addEventListener('click', ()=>{
         ensureAudio();
-        if(state.selected.has(type.id)){ state.selected.delete(type.id); b.classList.remove('selected'); }
-        else { state.selected.add(type.id); b.classList.add('selected'); SFX.tap(); }
+        if(state.selected.has(type.id)){
+          state.selected.delete(type.id); b.classList.remove('selected'); SFX.deselect();
+        } else {
+          state.selected.add(type.id); b.classList.add('selected'); SFX.select();
+        }
         doneBtn.classList.add('show');
+        updateSelectedCounter();
       });
       labelDock.appendChild(b);
     });
@@ -644,26 +757,36 @@
     }, 650);
   }
 
+  let flashRAF = null;
   function startRound(){
     const lvl = LEVELS[state.levelIdx];
     state.instances = generateScene(lvl.count);
     state.selected = new Set();
     doneBtn.classList.remove('show');
+    doneBtn.disabled = false;
+    doneBtn.style.pointerEvents = 'auto';
+    updateSelectedCounter();
     hud.classList.remove('hidden');
     revealPanel.classList.add('hidden');
     labelDock.classList.add('hidden');
     updateHud();
     clearScene();
     showReady(()=>{
-      drawScene(state.instances);
-      setTimeout(()=>{
-        clearScene();
-        labelDock.classList.remove('hidden');
-        doneBtn.style.display='block';
-        state.guessStart = performance.now();
-        stopwatch.classList.remove('hidden');
-        tickStopwatch();
-      }, lvl.flash);
+      const flashEnd = performance.now() + lvl.flash;
+      cancelAnimationFrame(flashRAF);
+      const loop = (now)=>{
+        drawScene(state.instances, now/1000);
+        if(now < flashEnd){ flashRAF = requestAnimationFrame(loop); }
+        else {
+          clearScene();
+          labelDock.classList.remove('hidden');
+          doneBtn.style.display='block';
+          state.guessStart = performance.now();
+          stopwatch.classList.remove('hidden');
+          tickStopwatch();
+        }
+      };
+      flashRAF = requestAnimationFrame(loop);
     });
   }
 
@@ -679,11 +802,15 @@
   doneBtn.addEventListener('click', finishGuess);
 
   function finishGuess(){
+    if(doneBtn.disabled) return;
+    doneBtn.disabled = true;
+    doneBtn.style.pointerEvents = 'none';
     clearInterval(swInterval);
     stopwatch.classList.add('hidden');
     const youTime = (performance.now()-state.guessStart)/1000;
     labelDock.classList.add('hidden');
     doneBtn.classList.remove('show');
+    selectedCounter.classList.add('hidden');
 
     const presentTypes = new Set(state.instances.map(o=>o.type.id));
     const tapped = state.selected;
@@ -705,7 +832,7 @@
     if(!passed){
       state.lives--;
       SFX.miss();
-      lifeFlash.style.transition='none'; lifeFlash.style.opacity='0.55';
+      lifeFlash.style.transition='none'; lifeFlash.style.opacity='0.3';
       requestAnimationFrame(()=>{ lifeFlash.style.transition='opacity .5s'; lifeFlash.style.opacity='0'; });
     }
 
@@ -718,7 +845,7 @@
       state.bestRound = { found:foundObjects, total, youTime, avTime, level: LEVELS[state.levelIdx].label };
     }
 
-    drawReveal(state.instances, tapped);
+    animateReveal(state.instances, tapped);
     updateHud();
     revealPanel.classList.remove('hidden');
 
